@@ -24,7 +24,7 @@ router.get("/:id/rooms", ctrl.listRoomsByHotel);
 // Create hotel
 router.post(
   "/",
-  // requireAdmin, // Temporarily disabled for testing purposes
+  requireAdmin, // Temporarily disabled for testing purposes
   [
     body("name").isString().notEmpty().withMessage("Hotel name is required"),
     body("location").isString().notEmpty().withMessage("Location is required"),
@@ -40,7 +40,7 @@ router.post(
 // Update hotel
 router.put(
   "/:id",
-  // requireAdmin, // Temporarily disabled for testing purposes
+  requireAdmin, // Temporarily disabled for testing purposes
   [
     body("name").optional().isString().notEmpty().withMessage("Hotel name cannot be empty"),
     body("location").optional().isString().notEmpty().withMessage("Location cannot be empty"),
@@ -61,7 +61,7 @@ router.delete("/:id", ctrl.deleteHotel);
 // Add room to hotel
 router.post(
   "/:id/rooms",
-  // requireAdmin, // Temporarily disabled for testing purposes
+  requireAdmin, // Temporarily disabled for testing purposes
   [
     body("type").isString().notEmpty().withMessage("Room type is required"),
     body("price").isFloat({ min: 0 }).withMessage("Price must be a positive number"),
@@ -75,7 +75,7 @@ router.post(
 // Update room
 router.put(
   "/:id/rooms/:roomId",
-  // requireAdmin, // Temporarily disabled for testing purposes
+  requireAdmin, // Temporarily disabled for testing purposes
   [
     body("type").optional().isString().notEmpty().withMessage("Room type cannot be empty"),
     body("price").optional().isFloat({ min: 0 }).withMessage("Price must be a positive number"),
@@ -84,6 +84,12 @@ router.put(
   ],
   validate,
   ctrl.updateRoom
+);
+
+router.delete(
+  "/:id/rooms/:roomId",
+  requireAdmin, // Temporarily disabled for testing purposes
+  ctrl.deleteRoom
 );
 
 module.exports = router;
