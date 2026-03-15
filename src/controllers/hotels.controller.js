@@ -120,7 +120,19 @@ exports.listRoomsByHotel = async (req, res, next) => {
       });
     }
 
-    const rooms = await Room.find({ hotelId: req.params.id }).sort({ createdAt: -1 });
+    // Optional query filters for Booking Service integration
+    const { isAvailable, type } = req.query;
+    const filter = { hotelId: req.params.id };
+
+    if (isAvailable !== undefined) {
+      filter.isAvailable = isAvailable === "true";
+    }
+
+    if (type) {
+      filter.type = { $regex: type, $options: "i" };
+    }
+
+    const rooms = await Room.find(filter).sort({ createdAt: -1 });
 
     res.status(200).json(rooms);
   } catch (error) {
@@ -175,6 +187,28 @@ exports.updateRoom = async (req, res, next) => {
     }
 
     res.status(200).json(room);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// DELETE /hotels/:id/rooms/:roomId
+exports.deleteRoom = async (req, res, next) => {
+  try {
+    const room = await Room.findOneAndDelete({
+      _id: req.params.roomId,
+      hotelId: req.params.id
+    });
+
+    if (!room) {
+      return res.status(404).json({
+        message: "Room not found"
+      });
+    }
+
+    res.status(200).json({
+      message: "Room deleted successfully"
+    });
   } catch (error) {
     next(error);
   }
