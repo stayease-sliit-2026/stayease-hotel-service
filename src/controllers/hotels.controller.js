@@ -156,6 +156,8 @@ exports.addRoomToHotel = async (req, res, next) => {
       type: req.body.type,
       price: req.body.price,
       capacity: req.body.capacity,
+      description: req.body.description || "",
+      images: req.body.images || [],
       isAvailable: req.body.isAvailable ?? true
     });
 

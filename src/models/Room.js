@@ -26,6 +26,17 @@ const roomSchema = new mongoose.Schema(
       required: true,
       min: 1
     },
+    // Room description shown in listing/details views
+    description: {
+      type: String,
+      trim: true,
+      default: ""
+    },
+    // Room image URLs
+    images: {
+      type: [String],
+      default: []
+    },
     // Simple availability flag
     isAvailable: {
       type: Boolean,

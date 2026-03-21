@@ -54,9 +54,9 @@ router.put(
 );
 
 // Delete hotel
-// router.delete("/:id", requireAdmin, ctrl.deleteHotel);
+router.delete("/:id", requireAdmin, ctrl.deleteHotel);
 // Temporarily disabled for testing purposes
-router.delete("/:id", ctrl.deleteHotel);
+// router.delete("/:id", ctrl.deleteHotel);
 
 // Add room to hotel
 router.post(
@@ -66,6 +66,20 @@ router.post(
     body("type").isString().notEmpty().withMessage("Room type is required"),
     body("price").isFloat({ min: 0 }).withMessage("Price must be a positive number"),
     body("capacity").isInt({ min: 1 }).withMessage("Capacity must be at least 1"),
+    body("description").optional().isString().withMessage("Description must be a string"),
+    body("images").optional().isArray().withMessage("Images must be an array"),
+    body("images.*")
+      .optional()
+      .isString()
+      .withMessage("Each image must be a valid image string")
+      .custom((value) => {
+        const isUrl = /^https?:\/\//i.test(value);
+        const isDataUrl = /^data:image\/[a-zA-Z0-9.+-]+;base64,/.test(value);
+        if (!isUrl && !isDataUrl) {
+          throw new Error("Each image must be a valid URL or base64 image data URL");
+        }
+        return true;
+      }),
     body("isAvailable").optional().isBoolean().withMessage("isAvailable must be true or false")
   ],
   validate,
@@ -80,6 +94,20 @@ router.put(
     body("type").optional().isString().notEmpty().withMessage("Room type cannot be empty"),
     body("price").optional().isFloat({ min: 0 }).withMessage("Price must be a positive number"),
     body("capacity").optional().isInt({ min: 1 }).withMessage("Capacity must be at least 1"),
+    body("description").optional().isString().withMessage("Description must be a string"),
+    body("images").optional().isArray().withMessage("Images must be an array"),
+    body("images.*")
+      .optional()
+      .isString()
+      .withMessage("Each image must be a valid image string")
+      .custom((value) => {
+        const isUrl = /^https?:\/\//i.test(value);
+        const isDataUrl = /^data:image\/[a-zA-Z0-9.+-]+;base64,/.test(value);
+        if (!isUrl && !isDataUrl) {
+          throw new Error("Each image must be a valid URL or base64 image data URL");
+        }
+        return true;
+      }),
     body("isAvailable").optional().isBoolean().withMessage("isAvailable must be true or false")
   ],
   validate,
@@ -87,7 +115,7 @@ router.put(
 );
 
 router.delete(
-  "/:id/rooms/:roomId",
+  "/:id/rooms/:roomId",  
   requireAdmin, // Temporarily disabled for testing purposes
   ctrl.deleteRoom
 );

@@ -320,6 +320,12 @@ components:
           type: number
         capacity:
           type: integer
+        description:
+          type: string
+        images:
+          type: array
+          items:
+            type: string
         isAvailable:
           type: boolean
         createdAt:
@@ -336,6 +342,12 @@ components:
           type: number
         capacity:
           type: integer
+        description:
+          type: string
+        images:
+          type: array
+          items:
+            type: string
         isAvailable:
           type: boolean
       required:
