@@ -3,13 +3,11 @@ jest.mock("axios", () => ({
 }));
 
 const axios = require("axios");
+const jwt = require("jsonwebtoken");
 const { requireAdmin } = require("../src/middleware/auth");
 
 function signToken(payload) {
-  const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
-  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  const signature = "test-signature";
-  return `${header}.${body}.${signature}`;
+  return jwt.sign(payload, "supersecretkey");
 }
 
 function createRes() {
