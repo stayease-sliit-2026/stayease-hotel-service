@@ -22,7 +22,7 @@ This microservice manages hotel and room inventory for the platform.
 
 ## API Endpoints
 
-Base URL: `http://localhost:5000`
+Base URL: `http://localhost:3002`
 
 ### Health
 
@@ -64,7 +64,7 @@ OpenAPI docs: `GET /docs`
 
 Create `.env` using `.env.example`.
 
-- `PORT` (default `5000`)
+- `PORT` (default `3002`)
 - `MONGO_URI` (MongoDB Atlas connection string)
 - `AUTH_SERVICE_URL` (base URL of Auth Service)
 - `CORS_ORIGINS` (comma-separated allowed origins)
@@ -94,7 +94,7 @@ Build and run image:
 
 ```bash
 docker build -t stayease-hotel-service .
-docker run --env-file .env -p 5000:5000 stayease-hotel-service
+docker run --env-file .env -p 3002:3002 stayease-hotel-service
 ```
 
 Run with compose:
