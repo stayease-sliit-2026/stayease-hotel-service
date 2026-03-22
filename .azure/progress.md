@@ -1,0 +1,8 @@
+- [x] Verified Dockerfile exposes port 3002.
+- [x] Confirmed docker-compose maps host port 3002 to container port 3002.
+- [x] Added Azure Container Apps Bicep template.
+- [x] Added GitHub Actions Azure deploy workflow.
+- [x] Updated CI to publish a `latest` Docker image tag on `main`.
+- [ ] Provision Azure resources.
+- [ ] Deploy container app.
+- [ ] Validate app logs and endpoints.

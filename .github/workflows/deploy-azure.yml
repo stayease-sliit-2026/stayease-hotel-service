@@ -1,0 +1,44 @@
+name: Deploy to Azure Container Apps
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Ensure Azure CLI containerapp extension
+        run: az extension add --name containerapp --upgrade
+
+      - name: Deploy infrastructure
+        run: |
+          az group create \
+            --name "${{ secrets.AZURE_RESOURCE_GROUP }}" \
+            --location "${{ secrets.AZURE_LOCATION }}"
+
+          deployment_url=$(az deployment group create \
+            --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
+            --name "stayease-hotel-service-deploy" \
+            --template-file infra/main.bicep \
+            --parameters \
+              containerAppName="${{ secrets.AZURE_CONTAINER_APP_NAME }}" \
+              environmentName="${{ secrets.AZURE_CONTAINER_APPS_ENV_NAME }}" \
+              logAnalyticsWorkspaceName="${{ secrets.AZURE_LOG_ANALYTICS_WORKSPACE_NAME }}" \
+              imageName="${{ secrets.DOCKERHUB_USERNAME }}/stayease-hotel-service:latest" \
+              mongoUri="${{ secrets.MONGO_URI }}" \
+              authServiceUrl="${{ secrets.AUTH_SERVICE_URL }}" \
+              corsOrigins="${{ secrets.CORS_ORIGINS }}" \
+              jwtSecret="${{ secrets.JWT_SECRET }}" \
+            --query "properties.outputs.containerAppUrl.value" -o tsv)
+
+          echo "Container App URL: ${deployment_url}"

@@ -143,3 +143,49 @@ This service demonstrates:
 - Secure inter-service authentication via Auth Service
 - REST API contract with OpenAPI
 - Containerized delivery with CI/CD automation
+
+## Remaining Tasks To Finish Submission
+
+1. Set GitHub repository secrets:
+	- `SONAR_TOKEN`
+	- `DOCKERHUB_USERNAME`
+	- `DOCKERHUB_TOKEN`
+2. Push to `develop` and confirm the CI workflow passes all stages (test, SonarCloud, Docker build).
+3. Decide deployment target and connect it in pipeline/release process:
+	- AWS ECS + ECR, or
+	- Azure Container Apps
+4. Capture proof for final demo/report:
+	- `/health` and `/docs` screenshots
+	- one successful admin-protected flow (`POST /hotels` with valid admin token)
+	- Booking Service integration call to `GET /hotels/:id/rooms`
+5. Keep `.env` out of git and use `.env.example` as the shared template for team setup.
+
+## Azure Deployment
+
+This repository now includes Azure Container Apps deployment support.
+
+Files:
+
+- [.github/workflows/deploy-azure.yml](.github/workflows/deploy-azure.yml)
+- [infra/main.bicep](infra/main.bicep)
+- [.azure/plan.copilotmd](.azure/plan.copilotmd)
+
+Required GitHub secrets for Azure deployment:
+
+- `AZURE_CREDENTIALS`
+- `AZURE_RESOURCE_GROUP`
+- `AZURE_LOCATION`
+- `AZURE_CONTAINER_APP_NAME`
+- `AZURE_CONTAINER_APPS_ENV_NAME`
+- `AZURE_LOG_ANALYTICS_WORKSPACE_NAME`
+- `DOCKERHUB_USERNAME`
+- `MONGO_URI`
+- `AUTH_SERVICE_URL`
+- `CORS_ORIGINS`
+- `JWT_SECRET`
+
+Deployment flow:
+
+1. CI pushes the `latest` Docker image tag on `main`.
+2. The Azure workflow provisions the Container Apps environment and app.
+3. The app pulls `docker.io/<username>/stayease-hotel-service:latest` and reads runtime config from secrets.
