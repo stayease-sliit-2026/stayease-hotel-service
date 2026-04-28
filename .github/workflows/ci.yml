@@ -11,6 +11,7 @@ permissions:
   contents: read
   checks: write
   pull-requests: write
+  security-events: write
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
@@ -230,16 +231,62 @@ jobs:
           echo "- Tags: ${{ steps.meta.outputs.tags }}"
           echo "- Scan: Trivy vulnerability check completed"
 
-  deploy_azure:
-    name: Deploy Azure Container App
+  azure_precheck:
+    name: Azure Precheck
     runs-on: ubuntu-latest
     needs: docker
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    outputs:
+      deployment_approved: ${{ steps.approve.outputs.approved }}
+      reason: ${{ steps.approve.outputs.reason }}
+    env:
+      AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+      AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+    steps:
+      - name: Validate Azure credentials
+        id: approve
+        shell: bash
+        run: |
+          if [ -z "${AZURE_CREDENTIALS}" ]; then
+            echo "approved=false" >> "$GITHUB_OUTPUT"
+            echo "reason=AZURE_CREDENTIALS missing" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ -z "${AZURE_RESOURCE_GROUP}" ]; then
+            echo "approved=false" >> "$GITHUB_OUTPUT"
+            echo "reason=AZURE_RESOURCE_GROUP missing" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if echo "${AZURE_CREDENTIALS}" | jq -e '.clientId and .clientSecret and .subscriptionId and .tenantId' >/dev/null 2>&1; then
+            echo "approved=true" >> "$GITHUB_OUTPUT"
+            echo "reason=Azure credentials validated" >> "$GITHUB_OUTPUT"
+          else
+            echo "approved=false" >> "$GITHUB_OUTPUT"
+            echo "reason=AZURE_CREDENTIALS must contain clientId, clientSecret, subscriptionId, and tenantId" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy_azure:
+    name: Deploy Azure Container App
+    runs-on: ubuntu-latest
+    needs: azure_precheck
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.azure_precheck.outputs.deployment_approved == 'true' }}
     outputs:
       app_url: ${{ steps.deploy.outputs.url }}
     env:
       AZURE_CORE_OUTPUT: none
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+      AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+      AZURE_LOCATION: ${{ secrets.AZURE_LOCATION }}
+      AZURE_CONTAINER_APP_NAME: ${{ secrets.AZURE_CONTAINER_APP_NAME }}
+      AZURE_CONTAINER_APPS_ENV_NAME: ${{ secrets.AZURE_CONTAINER_APPS_ENV_NAME }}
+      AZURE_LOG_ANALYTICS_WORKSPACE_NAME: ${{ secrets.AZURE_LOG_ANALYTICS_WORKSPACE_NAME }}
+      MONGO_URI: ${{ secrets.MONGO_URI }}
+      AUTH_SERVICE_URL: ${{ secrets.AUTH_SERVICE_URL }}
+      CORS_ORIGINS: ${{ secrets.CORS_ORIGINS }}
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -259,7 +306,7 @@ jobs:
       - name: Login to Azure
         uses: azure/login@v2
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          creds: ${{ env.AZURE_CREDENTIALS }}
 
       - name: Ensure Azure CLI containerapp extension
         run: az extension add --name containerapp --upgrade --only-show-errors
@@ -267,8 +314,8 @@ jobs:
       - name: Create or update resource group
         run: |
           az group create \
-            --name "${{ secrets.AZURE_RESOURCE_GROUP }}" \
-            --location "${{ secrets.AZURE_LOCATION }}" \
+            --name "${{ env.AZURE_RESOURCE_GROUP }}" \
+            --location "${{ env.AZURE_LOCATION }}" \
             --only-show-errors
 
       - name: Deploy infrastructure via Bicep
@@ -278,18 +325,18 @@ jobs:
           echo "Deploying infrastructure with image: ${{ steps.image.outputs.name }}"
 
           deployment_url=$(az deployment group create \
-            --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
+            --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
             --name "stayease-hotel-service-${{ github.run_id }}" \
             --template-file infra/main.bicep \
             --parameters \
-              containerAppName="${{ secrets.AZURE_CONTAINER_APP_NAME }}" \
-              environmentName="${{ secrets.AZURE_CONTAINER_APPS_ENV_NAME }}" \
-              logAnalyticsWorkspaceName="${{ secrets.AZURE_LOG_ANALYTICS_WORKSPACE_NAME }}" \
+              containerAppName="${{ env.AZURE_CONTAINER_APP_NAME }}" \
+              environmentName="${{ env.AZURE_CONTAINER_APPS_ENV_NAME }}" \
+              logAnalyticsWorkspaceName="${{ env.AZURE_LOG_ANALYTICS_WORKSPACE_NAME }}" \
               imageName="${{ steps.image.outputs.name }}" \
-              mongoUri="${{ secrets.MONGO_URI }}" \
-              authServiceUrl="${{ secrets.AUTH_SERVICE_URL }}" \
-              corsOrigins="${{ secrets.CORS_ORIGINS }}" \
-              jwtSecret="${{ secrets.JWT_SECRET }}" \
+              mongoUri="${{ env.MONGO_URI }}" \
+              authServiceUrl="${{ env.AUTH_SERVICE_URL }}" \
+              corsOrigins="${{ env.CORS_ORIGINS }}" \
+              jwtSecret="${{ env.JWT_SECRET }}" \
             --only-show-errors \
             --query "properties.outputs.containerAppUrl.value" -o tsv)
 

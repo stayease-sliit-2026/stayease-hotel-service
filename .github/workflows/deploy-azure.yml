@@ -20,6 +20,10 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       deployment_approved: ${{ steps.approve.outputs.approved }}
+      reason: ${{ steps.approve.outputs.reason }}
+    env:
+      AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+      AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -28,19 +32,37 @@ jobs:
         id: validate
         run: |
           echo "Validating required secrets..."
-          if [ -z "${{ secrets.AZURE_CREDENTIALS }}" ]; then
-            echo "❌ AZURE_CREDENTIALS not set"
-            exit 1
+          if [ -z "${AZURE_CREDENTIALS}" ]; then
+            echo "⚠️ AZURE_CREDENTIALS not set"
           fi
-          if [ -z "${{ secrets.AZURE_RESOURCE_GROUP }}" ]; then
-            echo "❌ AZURE_RESOURCE_GROUP not set"
-            exit 1
+          if [ -z "${AZURE_RESOURCE_GROUP}" ]; then
+            echo "⚠️ AZURE_RESOURCE_GROUP not set"
           fi
-          echo "✅ Required secrets configured"
+          echo "✅ Validation completed"
 
       - name: Check deployment approval
         id: approve
-        run: echo "approved=true" >> "$GITHUB_OUTPUT"
+        shell: bash
+        run: |
+          if [ -z "${AZURE_CREDENTIALS}" ]; then
+            echo "approved=false" >> "$GITHUB_OUTPUT"
+            echo "reason=AZURE_CREDENTIALS missing" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ -z "${AZURE_RESOURCE_GROUP}" ]; then
+            echo "approved=false" >> "$GITHUB_OUTPUT"
+            echo "reason=AZURE_RESOURCE_GROUP missing" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if echo "${AZURE_CREDENTIALS}" | jq -e '.clientId and .clientSecret and .subscriptionId and .tenantId' >/dev/null 2>&1; then
+            echo "approved=true" >> "$GITHUB_OUTPUT"
+            echo "reason=Azure credentials validated" >> "$GITHUB_OUTPUT"
+          else
+            echo "approved=false" >> "$GITHUB_OUTPUT"
+            echo "reason=AZURE_CREDENTIALS must contain clientId, clientSecret, subscriptionId, and tenantId" >> "$GITHUB_OUTPUT"
+          fi
 
   deploy_azure:
     name: deploy-azure
@@ -56,6 +78,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Confirm deployment approval
+        run: echo "Proceeding with Azure deployment"
 
       - name: Resolve image
         id: image
