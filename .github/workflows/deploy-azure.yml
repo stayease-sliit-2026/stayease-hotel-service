@@ -60,6 +60,7 @@ jobs:
     if: ${{ needs.pre-deployment-checks.outputs.deployment_approved == 'true' }}
     env:
       AZURE_CORE_OUTPUT: none
+      PEER_SERVICE_HEALTH_URL: ${{ secrets.PEER_SERVICE_HEALTH_URL }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -142,11 +143,11 @@ jobs:
           echo "✅ API documentation endpoint accessible"
 
       - name: Integration test with peer service
-        if: ${{ secrets.PEER_SERVICE_HEALTH_URL != '' }}
+        if: ${{ env.PEER_SERVICE_HEALTH_URL != '' }}
         shell: bash
         run: |
           echo "🔗 Checking teammate service integration"
-          if curl -fsS "${{ secrets.PEER_SERVICE_HEALTH_URL }}" > /dev/null 2>&1; then
+          if curl -fsS "${{ env.PEER_SERVICE_HEALTH_URL }}" > /dev/null 2>&1; then
             echo "✅ Teammate service is reachable"
           else
             echo "⚠️  Teammate service check failed (non-blocking)"
