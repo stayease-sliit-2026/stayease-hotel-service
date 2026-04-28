@@ -1,16 +1,44 @@
-name: Deploy to Azure Container Apps
+﻿name: Deploy to Azure Container Apps
 
 on:
   workflow_dispatch:
-  push:
+    inputs:
+      image_tag:
+        description: Docker image tag to deploy
+        required: true
+        default: latest
+  workflow_run:
+    workflows: ["CI/CD"]
+    types: [completed]
     branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    env:
+      AZURE_CORE_OUTPUT: none
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Resolve image
+        id: image
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            echo "name=${{ secrets.DOCKERHUB_USERNAME }}/stayease-hotel-service:sha-${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=${{ secrets.DOCKERHUB_USERNAME }}/stayease-hotel-service:${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Login to Azure
         uses: azure/login@v2
@@ -18,13 +46,16 @@ jobs:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Ensure Azure CLI containerapp extension
-        run: az extension add --name containerapp --upgrade
+        run: az extension add --name containerapp --upgrade --only-show-errors
 
       - name: Deploy infrastructure
+        id: deploy
+        shell: bash
         run: |
           az group create \
             --name "${{ secrets.AZURE_RESOURCE_GROUP }}" \
-            --location "${{ secrets.AZURE_LOCATION }}"
+            --location "${{ secrets.AZURE_LOCATION }}" \
+            --only-show-errors
 
           deployment_url=$(az deployment group create \
             --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
@@ -34,11 +65,38 @@ jobs:
               containerAppName="${{ secrets.AZURE_CONTAINER_APP_NAME }}" \
               environmentName="${{ secrets.AZURE_CONTAINER_APPS_ENV_NAME }}" \
               logAnalyticsWorkspaceName="${{ secrets.AZURE_LOG_ANALYTICS_WORKSPACE_NAME }}" \
-              imageName="${{ secrets.DOCKERHUB_USERNAME }}/stayease-hotel-service:latest" \
+              imageName="${{ steps.image.outputs.name }}" \
               mongoUri="${{ secrets.MONGO_URI }}" \
               authServiceUrl="${{ secrets.AUTH_SERVICE_URL }}" \
               corsOrigins="${{ secrets.CORS_ORIGINS }}" \
               jwtSecret="${{ secrets.JWT_SECRET }}" \
+            --only-show-errors \
             --query "properties.outputs.containerAppUrl.value" -o tsv)
 
+          echo "url=${deployment_url}" >> "$GITHUB_OUTPUT"
           echo "Container App URL: ${deployment_url}"
+
+      - name: Smoke test deployed service
+        shell: bash
+        run: |
+          APP_URL="${{ steps.deploy.outputs.url }}"
+          echo "Running smoke checks on ${APP_URL}"
+          for i in {1..12}; do
+            if curl -fsS "${APP_URL}/health" > /dev/null; then
+              break
+            fi
+            echo "Waiting for app readiness (${i}/12)..."
+            sleep 10
+          done
+
+          curl -fsS "${APP_URL}/health"
+          curl -fsS "${APP_URL}/docs" > /dev/null
+          echo "Smoke checks passed."
+
+      - name: Optional teammate integration check
+        if: ${{ secrets.PEER_SERVICE_HEALTH_URL != '' }}
+        shell: bash
+        run: |
+          echo "Checking teammate integration endpoint"
+          curl -fsS "${{ secrets.PEER_SERVICE_HEALTH_URL }}" > /dev/null
+          echo "Teammate endpoint reachable."
