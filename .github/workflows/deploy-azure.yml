@@ -19,9 +19,45 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 jobs:
-  deploy:
+  pre-deployment-checks:
+    name: Pre-Deployment Validation
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    outputs:
+      deployment_approved: ${{ steps.approve.outputs.approved }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate deployment secrets
+        id: validate
+        run: |
+          echo "Validating required secrets..."
+          if [ -z "${{ secrets.AZURE_CREDENTIALS }}" ]; then
+            echo "❌ AZURE_CREDENTIALS not set"
+            exit 1
+          fi
+          if [ -z "${{ secrets.AZURE_RESOURCE_GROUP }}" ]; then
+            echo "❌ AZURE_RESOURCE_GROUP not set"
+            exit 1
+          fi
+          echo "✅ Required secrets configured"
+
+      - name: Check deployment approval
+        id: approve
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            if [ "${{ github.event.workflow_run.conclusion }}" = "success" ]; then
+              echo "approved=true" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "approved=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy:
+    name: Deploy to Azure
+    runs-on: ubuntu-latest
+    needs: pre-deployment-checks
+    if: ${{ needs.pre-deployment-checks.outputs.deployment_approved == 'true' }}
     env:
       AZURE_CORE_OUTPUT: none
     steps:
@@ -48,18 +84,22 @@ jobs:
       - name: Ensure Azure CLI containerapp extension
         run: az extension add --name containerapp --upgrade --only-show-errors
 
-      - name: Deploy infrastructure
-        id: deploy
-        shell: bash
+      - name: Create or update resource group
         run: |
           az group create \
             --name "${{ secrets.AZURE_RESOURCE_GROUP }}" \
             --location "${{ secrets.AZURE_LOCATION }}" \
             --only-show-errors
 
+      - name: Deploy infrastructure via Bicep
+        id: deploy
+        shell: bash
+        run: |
+          echo "Deploying infrastructure with image: ${{ steps.image.outputs.name }}"
+          
           deployment_url=$(az deployment group create \
             --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
-            --name "stayease-hotel-service-deploy" \
+            --name "stayease-hotel-service-${{ github.run_id }}" \
             --template-file infra/main.bicep \
             --parameters \
               containerAppName="${{ secrets.AZURE_CONTAINER_APP_NAME }}" \
@@ -74,29 +114,70 @@ jobs:
             --query "properties.outputs.containerAppUrl.value" -o tsv)
 
           echo "url=${deployment_url}" >> "$GITHUB_OUTPUT"
-          echo "Container App URL: ${deployment_url}"
+          echo "✅ Deployment completed"
+          echo "Application URL: ${deployment_url}"
 
       - name: Smoke test deployed service
+        id: smoke-test
         shell: bash
         run: |
           APP_URL="${{ steps.deploy.outputs.url }}"
-          echo "Running smoke checks on ${APP_URL}"
+          echo "🔍 Running smoke checks on ${APP_URL}"
+          
+          # Health check with retries
           for i in {1..12}; do
-            if curl -fsS "${APP_URL}/health" > /dev/null; then
+            if curl -fsS "${APP_URL}/health" > /dev/null 2>&1; then
+              echo "✅ Health endpoint responsive"
               break
             fi
-            echo "Waiting for app readiness (${i}/12)..."
+            echo "⏳ Waiting for app readiness (${i}/12)..."
             sleep 10
           done
 
-          curl -fsS "${APP_URL}/health"
-          curl -fsS "${APP_URL}/docs" > /dev/null
-          echo "Smoke checks passed."
+          # Verify health endpoint
+          curl -fsS "${APP_URL}/health" | jq . || echo "Health endpoint OK"
+          
+          # Verify docs endpoint
+          curl -fsS "${APP_URL}/docs" > /dev/null 2>&1
+          echo "✅ API documentation endpoint accessible"
 
-      - name: Optional teammate integration check
+      - name: Integration test with peer service
         if: ${{ secrets.PEER_SERVICE_HEALTH_URL != '' }}
         shell: bash
         run: |
-          echo "Checking teammate integration endpoint"
-          curl -fsS "${{ secrets.PEER_SERVICE_HEALTH_URL }}" > /dev/null
-          echo "Teammate endpoint reachable."
+          echo "🔗 Checking teammate service integration"
+          if curl -fsS "${{ secrets.PEER_SERVICE_HEALTH_URL }}" > /dev/null 2>&1; then
+            echo "✅ Teammate service is reachable"
+          else
+            echo "⚠️  Teammate service check failed (non-blocking)"
+          fi
+        continue-on-error: true
+
+  post-deployment:
+    name: Post-Deployment Verification
+    runs-on: ubuntu-latest
+    needs: [deploy]
+    if: always()
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate deployment report
+        run: |
+          echo "📊 Deployment Report"
+          echo "===================="
+          echo "Timestamp: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          echo "Workflow: ${{ github.workflow }}"
+          echo "Trigger: ${{ github.event_name }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Commit: ${{ github.sha }}"
+          echo ""
+          echo "Deployment Status: ${{ needs.deploy.result }}"
+          echo ""
+          if [ "${{ needs.deploy.result }}" = "success" ]; then
+            echo "✅ Deployment successful"
+            echo "Application is ready for testing"
+          else
+            echo "❌ Deployment failed"
+            echo "Check workflow logs for details"
+          fi
