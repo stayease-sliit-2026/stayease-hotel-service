@@ -1,5 +1,7 @@
 # StayEase Hotel Listing Service
 
+
+
 Hotel Listing Service for the StayEase cloud-native hotel booking platform (SE4010 - Current Trends in Software Engineering).
 
 ## Service Responsibility
@@ -111,10 +113,16 @@ Pipeline stages:
 
 1. Checkout repository
 2. Install dependencies (`npm ci`)
-3. Run tests (`npm test`)
+3. Run tests with coverage (`npm run test:coverage`)
 4. SonarCloud static scan
-5. Build Docker image
-6. Push Docker image (when Docker Hub secrets are configured)
+5. Build Docker image for pushes and pull requests
+6. Push Docker image on branch pushes when Docker Hub secrets are configured
+
+Docker image tags:
+
+- `sha-<full-git-sha>` for every pushed commit
+- branch tag such as `main` or `develop`
+- `latest` for pushes to `main`
 
 Required GitHub secrets:
 
@@ -186,6 +194,6 @@ Required GitHub secrets for Azure deployment:
 
 Deployment flow:
 
-1. CI pushes the `latest` Docker image tag on `main`.
-2. The Azure workflow provisions the Container Apps environment and app.
-3. The app pulls `docker.io/<username>/stayease-hotel-service:latest` and reads runtime config from secrets.
+1. CI tests the service and pushes Docker tags on `main`.
+2. The Azure workflow starts after the successful `CI/CD` workflow on `main`.
+3. The app deploys the exact `sha-<full-git-sha>` image produced by CI and reads runtime config from secrets.
